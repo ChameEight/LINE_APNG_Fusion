@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APNG 合成ツール完全版</title>
+    <style>
+        body {
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+            padding: 15px;
+            max-width: 900px;
+            margin: auto;
+            color: #333;
+            background-color: #f4f6f9;
+        }
+        h1 { text-align: center; font-size: 22px; color: #2c3e50; margin: 10px 0 20px 0; }
+        
+        .box {
+            background: #fff;
+            border: 1px solid #e1e4e8;
+            padding: 15px 20px;
+            margin-bottom: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        h3 { margin-top: 0; font-size: 16px; color: #34495e; border-bottom: 2px solid #f0f2f5; padding-bottom: 8px; margin-bottom: 15px; }
+        
+        /* ドラッグ＆ドロップエリア（横並び対応） */
+        .file-input-container { display: flex; flex-direction: row; gap: 15px; align-items: stretch; }
+        
+        .drop-zone {
+            flex: 1;
+            border: 2px dashed #b5c4d6;
+            border-radius: 8px;
+            padding: 25px 15px;
+            text-align: center;
+            background-color: #f8fafc;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .drop-zone:hover, .drop-zone.dragover { border-color: #007bff; background-color: #eef6ff; }
+        .drop-zone p { margin: 0; font-size: 15px; color: #333; pointer-events: none; line-height: 1.5; }
+        .drop-zone .icon { font-size: 28px; color: #8ba1b7; margin-bottom: 5px; pointer-events: none;}
+        .hidden-input { display: none !important; }
+        .file-name { margin-top: 10px; font-weight: bold; color: #007bff; word-break: break-all; font-size: 13px; }
+        
+        /* ボタン類 */
+        .btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: inline-block;
+            font-weight: bold;
+        }
+        .btn:hover { background-color: #0056b3; }
+        .btn:disabled { background-color: #aaa; cursor: not-allowed; }
+        .btn-success { background-color: #28a745; }
+        .btn-success:hover { background-color: #218838; }
+        .btn-warning { background-color: #ff9800; }
+        .btn-warning:hover { background-color: #e68a00; }
+        .btn-replay { background-color: #17a2b8; padding: 8px 16px; font-size: 13px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
+        .btn-replay:hover { background-color: #138496; }
+
+        /* 丸い入れ替えボタン */
+        .swap-btn-container { display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .btn-swap { 
+            background-color: #6c757d; 
+            width: 44px; height: 44px; 
+            padding: 0; 
+            border-radius: 50%; 
+            font-size: 20px; 
+            display: flex; justify-content: center; align-items: center; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn-swap:hover { background-color: #5a6268; }
+
+        /* 結果プレビューと情報パネル */
+        #preview {
+            max-width: 100%;
+            max-height: 300px; 
+            object-fit: contain;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            transition: background-color 0.3s;
+        }
+
+        /* プレビュー背景色クラス */
+        .bg-checker {
+            background-color: transparent;
+            background-image: linear-gradient(45deg, #eee 25%, transparent 25%), 
+                              linear-gradient(-45deg, #eee 25%, transparent 25%), 
+                              linear-gradient(45deg, transparent 75%, #eee 75%), 
+                              linear-gradient(-45deg, transparent 75%, #eee 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+        .bg-white { background-color: #ffffff; background-image: none; }
+        .bg-black { background-color: #000000; background-image: none; }
+        .bg-line  { background-color: #8fb1d9; background-image: none; }
+
+        /* プレビュー背景切り替えボタン */
+        .bg-switch-btn {
+            background: #f0f2f5;
+            border: 1px solid #ccc;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s, color 0.2s;
+            font-weight: bold;
+            color: #555;
+        }
+        .bg-switch-btn.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .bg-switch-btn:hover:not(.active) {
+            background: #e2e6ea;
+        }
+
+        .info-panel { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6; height: 100%; box-sizing: border-box; }
+        .info-panel ul { list-style-type: none; padding-left: 0; margin: 0; font-size: 14px;}
+        .info-panel li { border-bottom: 1px dashed #ccc; padding: 8px 0; }
+        .info-panel li:last-child { border-bottom: none; padding-bottom: 0; }
+        
+        /* ステータスメッセージ */
+        #status { font-weight: bold; color: #d9534f; margin-bottom: 15px; text-align: center; font-size: 16px; white-space: pre-wrap; line-height: 1.4; }
+        .hidden { display: none !important; }
+
+        /* キャンバス領域の外側 */
+        .canvas-container-wrapper {
+            display: flex; justify-content: center; align-items: center; 
+            background-color: #343a40; /* ダークグレー背景 */
+            border: 1px solid #212529; 
+            border-radius: 8px; 
+            overflow: auto; 
+            padding: 20px;
+        }
+
+        /* Fabric.jsが生成するキャンバス本体 */
+        .canvas-container {
+            background-color: #2b3035; /* 作業域背景 */
+            background-image: linear-gradient(45deg, #3a3f44 25%, transparent 25%), 
+                              linear-gradient(-45deg, #3a3f44 25%, transparent 25%), 
+                              linear-gradient(45deg, transparent 75%, #3a3f44 75%), 
+                              linear-gradient(-45deg, transparent 75%, #3a3f44 75%);
+            background-size: 20px 20px; 
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            border-radius: 4px;
+        }
+
+        /* スマホ向けレスポンシブ */
+        @media (max-width: 650px) {
+            .file-input-container { flex-direction: column; }
+            .swap-btn-container { transform: rotate(90deg); margin: 5px 0; }
+        }
+    </style>
+</head>
+<body>
+
+<h1>APNG 合成ツール</h1>
+
+<div class="box">
+    <h3>1. 前景・後景の設定</h3>
+    
+    <div class="file-input-container">
+        <div class="drop-zone" id="fgDropZone">
+            <div class="icon">🖼️</div>
+            <p><strong>前景用 APNG</strong><br><span style="font-size: 12px; color: #777;">ここにドロップ または クリック</span></p>
+            <input type="file" id="fgFile" accept="image/png, image/apng" class="hidden-input">
+            <div class="file-name" id="fgFileName"></div>
+        </div>
+
+        <div class="swap-btn-container">
+            <button id="swapBtn" class="btn btn-swap" title="前景と後景を入れ替える">⇄</button>
+            <span style="font-size: 11px; margin-top: 5px; color: #666; font-weight: bold;">入れ替え</span>
+        </div>
+
+        <div class="drop-zone" id="bgDropZone">
+            <div class="icon">🖼️</div>
+            <p><strong>後景用 APNG</strong><br><span style="font-size: 12px; color: #777;">ここにドロップ または クリック</span></p>
+            <input type="file" id="bgFile" accept="image/png, image/apng" class="hidden-input">
+            <div class="file-name" id="bgFileName"></div>
+        </div>
+    </div>
+</div>
+
+<div class="box">
+    <h3 style="margin-bottom: 10px;">2. 合成の基準設定とファイル情報</h3>
+    <p style="font-size: 13px; color: #666; margin-top:0; margin-bottom:12px;">各項目の基準にする画像を選択してください。</p>
+    
+    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px;">
+        <label style="font-size: 14px; font-weight: bold;">
+            ① サイズ基準:
+            <select id="sizeBase" style="padding: 5px; border-radius: 4px;">
+                <option value="fg">前景画像</option>
+                <option value="bg" selected>後景画像</option>
+            </select>
+        </label>
+
+        <label style="font-size: 14px; font-weight: bold;">
+            ② フレーム数＆時間（ループ回数）基準:
+            <select id="animBase" style="padding: 5px; border-radius: 4px;">
+                <option value="fg">前景画像</option>
+                <option value="bg" selected>後景画像</option>
+            </select>
+        </label>
+    </div>
+
+    <div id="outOfBoundsHandlingArea" class="hidden" style="margin-bottom: 20px; padding: 12px; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 6px;">
+        <p style="font-size: 13px; font-weight: bold; margin: 0 0 8px 0; color: #856404;">
+            ⚠️ 基準でない画像のフレーム数が不足しています。足りないフレームの表示方法を選択してください。
+        </p>
+        <label style="font-size: 13px; margin-right: 15px; cursor: pointer; color: #856404;">
+            <input type="radio" name="outOfBoundsHandling" value="last" checked> 最後のフレームを表示し続ける
+        </label>
+        <label style="font-size: 13px; cursor: pointer; color: #856404;">
+            <input type="radio" name="outOfBoundsHandling" value="loop"> 最初に戻ってループする
+        </label>
+    </div>
+
+    <div id="overflowHandlingArea" class="hidden" style="margin-bottom: 20px; padding: 12px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 6px;">
+        <p style="font-size: 13px; font-weight: bold; margin: 0 0 8px 0; color: #0c5460;">
+            ℹ️ 基準ではない画像のフレーム数が余っています。はみ出したフレームのカット方法を選択してください。
+        </p>
+        <label style="font-size: 13px; cursor: pointer; color: #0c5460;">
+            <input type="radio" name="overflowHandling" value="head" checked> 先頭のはみ出した部分をカットする
+        </label>
+        <label style="font-size: 13px; margin-right: 15px; cursor: pointer; color: #0c5460;">
+            <input type="radio" name="overflowHandling" value="tail"> 後ろのはみ出した部分をカットする
+        </label>
+    </div>
+
+    <div id="fileInfoArea" class="hidden" style="display: flex; gap: 15px; flex-wrap: wrap;">
+        <div id="fgInfoPanel" class="info-panel" style="flex: 1; min-width: 250px; transition: all 0.2s;">
+            <h4 id="fgInfoTitle" style="margin-top: 0; color: #495057; font-size: 15px;">🖼️ 前景画像</h4>
+            <ul id="fgInfoList">
+                <li style="color:#999;">ファイルが選択されていません</li>
+            </ul>
+        </div>
+        <div id="bgInfoPanel" class="info-panel" style="flex: 1; min-width: 250px; transition: all 0.2s;">
+            <h4 id="bgInfoTitle" style="margin-top: 0; color: #495057; font-size: 15px;">🖼️ 後景画像</h4>
+            <ul id="bgInfoList">
+                <li style="color:#999;">ファイルが選択されていません</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="box hidden" id="adjustArea">
+    <h3 style="margin-bottom: 10px;">3. 配置調整</h3>
+    <p style="font-size: 13px; color: #666; margin-top:0; margin-bottom:12px;">
+        青い枠線が出ている画像をマウスで操作して、合成位置やサイズ・角度を調整してください。<br>
+        <span style="color:#ff4757; font-weight:bold; font-size:13px;">※赤の点線枠内が、実際に合成される（書き出される）範囲です。枠外に出た部分も確認・操作できます。</span>
+    </p>
+
+    <div style="margin-bottom: 15px; padding: 12px; background: #f0f2f5; border-radius: 6px; display: inline-block;">
+        <strong style="font-size: 14px; margin-right: 15px; color: #333;">🎯 操作する画像:</strong>
+        <label style="font-size: 14px; cursor: pointer; margin-right: 15px; font-weight: bold;">
+            <input type="radio" name="adjustTarget" value="fg"> 前景を調整
+        </label>
+        <label style="font-size: 14px; cursor: pointer; font-weight: bold;">
+            <input type="radio" name="adjustTarget" value="bg"> 後景を調整
+        </label>
+        <div style="font-size: 12px; color: #d9534f; margin-top: 5px;">
+            ※後景を操作中は、確認しやすくするため前景が一時的に半透明で表示されます（合成結果には影響しません）。
+        </div>
+    </div>
+
+    <div class="canvas-container-wrapper" id="canvasWrapper">
+        <canvas id="fabricCanvas"></canvas>
+    </div>
+</div>
+
+<div style="text-align: center; margin-bottom: 15px;">
+    <button id="processBtn" class="btn" style="padding: 12px 40px; font-size: 18px; box-shadow: 0 4px 6px rgba(0,123,255,0.2);">✨ 合成開始</button>
+</div>
+
+<div id="status" class="hidden">処理中...</div>
+
+<div id="resultArea" class="box hidden">
+    <h3>4. 合成結果</h3>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch;">
+        <div style="flex: 1; min-width: 250px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            
+            <div style="margin-bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;">
+                <button class="bg-switch-btn active" data-bg="bg-checker">格子</button>
+                <button class="bg-switch-btn" data-bg="bg-white">白</button>
+                <button class="bg-switch-btn" data-bg="bg-black">黒</button>
+                <button class="bg-switch-btn" data-bg="bg-line">水色(LINE風)</button>
+            </div>
+
+            <img id="preview" class="bg-checker" alt="合成プレビュー">
+            
+            <div style="margin-top: 15px;">
+                <button id="replayBtn" class="btn btn-replay">🔄 プレビューを最初から再生</button>
+            </div>
+        </div>
+        <div style="flex: 1; min-width: 250px;">
+            <div class="info-panel">
+                <h4 style="margin-top: 0; color: #495057; font-size: 15px;">📊 合成後のファイル情報</h4>
+                <ul id="resultInfo"></ul>
+            </div>
+        </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 20px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+        <button id="download300kbBtn" class="btn btn-warning hidden">300KB以下でAPNG保存</button>
+        <button id="download1mbBtn" class="btn btn-warning hidden">1MB以下でAPNG保存</button>
+        <button id="downloadOriginalBtn" class="btn">元の容量でAPNG保存</button>
+        <button id="downloadZipBtn" class="btn btn-success">各フレームを PNG (ZIP) で保存</button>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script>
+    let generatedApngBlob = null;
+    let generatedFrames = []; 
+    let currentEncodingData = null; 
+    let previewTimeout = null;
+
+    let fabricCanvasInstance = null;
+    let canvasScale = 1;         
+    let fgFabricObj = null; 
+    let bgFabricObj = null; 
+    let currentFgUrl = null;
+    let currentBgUrl = null;
+
+    let fgFileInfoCache = null;
+    let bgFileInfoCache = null;
+
+    const WORK_MARGIN = 80;
+
+    window.addEventListener('DOMContentLoaded', () => {
+        fabricCanvasInstance = new fabric.Canvas('fabricCanvas', { preserveObjectStacking: true });
+        
+        document.querySelectorAll('.bg-switch-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.bg-switch-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                
+                const preview = document.getElementById('preview');
+                const targetClass = e.target.getAttribute('data-bg');
+                preview.classList.remove('bg-checker', 'bg-white', 'bg-black', 'bg-line');
+                preview.classList.add(targetClass);
+            });
+        });
+
+        document.querySelectorAll('input[name="adjustTarget"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                updateAdjustTarget(e.target.value);
+            });
+        });
+    });
+
+    function updateAdjustTarget(target) {
+        if (!fgFabricObj || !bgFabricObj) return;
+
+        if (target === 'fg') {
+            fgFabricObj.set({ selectable: true, evented: true, opacity: 1.0 });
+            bgFabricObj.set({ selectable: false, evented: false });
+            fabricCanvasInstance.setActiveObject(fgFabricObj);
+        } else {
+            fgFabricObj.set({ selectable: false, evented: false, opacity: 0.5 });
+            bgFabricObj.set({ selectable: true, evented: true });
+            fabricCanvasInstance.setActiveObject(bgFabricObj);
+        }
+        fabricCanvasInstance.requestRenderAll();
+    }
+
+    function setupDropZone(zoneId, inputId, nameId, isFg) {
+        const zone = document.getElementById(zoneId);
+        const input = document.getElementById(inputId);
+        const nameDisplay = document.getElementById(nameId);
+
+        zone.addEventListener('click', () => input.click());
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            zone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
+        });
+        ['dragenter', 'dragover'].forEach(eventName => {
+            zone.addEventListener(eventName, () => zone.classList.add('dragover'), false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            zone.addEventListener(eventName, () => zone.classList.remove('dragover'), false);
+        });
+        zone.addEventListener('drop', async (e) => {
+            if (e.dataTransfer.files.length > 0) {
+                input.files = e.dataTransfer.files;
+                updateFileName(input, nameDisplay);
+                await handleFileChange(isFg);
+            }
+        });
+        input.addEventListener('change', async () => {
+            updateFileName(input, nameDisplay);
+            await handleFileChange(isFg);
+        });
+    }
+
+    function updateFileName(input, display) {
+        display.textContent = input.files.length > 0 ? `📄 ${input.files[0].name}` : '';
+    }
+
+    async function handleFileChange(isFg) {
+        const fgInput = document.getElementById('fgFile');
+        const bgInput = document.getElementById('bgFile');
+        const file = isFg ? fgInput.files[0] : bgInput.files[0];
+        
+        await loadFileInfo(file, isFg);
+        
+        triggerEditorUpdate();
+        updateFileInfoDisplay();
+    }
+
+    setupDropZone('fgDropZone', 'fgFile', 'fgFileName', true);
+    setupDropZone('bgDropZone', 'bgFile', 'bgFileName', false);
+
+    document.getElementById('swapBtn').addEventListener('click', async () => {
+        const fgInput = document.getElementById('fgFile');
+        const bgInput = document.getElementById('bgFile');
+        
+        const tempFgFile = fgInput.files[0];
+        const tempBgFile = bgInput.files[0];
+
+        const dtFg = new DataTransfer();
+        if (tempBgFile) dtFg.items.add(tempBgFile);
+        fgInput.files = dtFg.files;
+
+        const dtBg = new DataTransfer();
+        if (tempFgFile) dtBg.items.add(tempFgFile);
+        bgInput.files = dtBg.files;
+
+        updateFileName(fgInput, document.getElementById('fgFileName'));
+        updateFileName(bgInput, document.getElementById('bgFileName'));
+
+        ['sizeBase', 'animBase'].forEach(id => {
+            const select = document.getElementById(id);
+            select.value = (select.value === 'fg') ? 'bg' : 'fg';
+        });
+
+        const tempInfo = fgFileInfoCache;
+        fgFileInfoCache = bgFileInfoCache;
+        bgFileInfoCache = tempInfo;
+
+        if (!fgInput.files[0]) document.getElementById('fgInfoList').innerHTML = '<li style="color:#999;">ファイルが選択されていません</li>';
+        if (!bgInput.files[0]) document.getElementById('bgInfoList').innerHTML = '<li style="color:#999;">ファイルが選択されていません</li>';
+
+        triggerEditorUpdate();
+        updateFileInfoDisplay();
+    });
+
+    ['sizeBase', 'animBase'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => {
+            triggerEditorUpdate();
+            updateFileInfoDisplay();
+        });
+    });
+
+    async function loadFileInfo(file, isFg) {
+        const listId = isFg ? 'fgInfoList' : 'bgInfoList';
+        
+        if (!file) {
+            if (isFg) fgFileInfoCache = null;
+            else bgFileInfoCache = null;
+            document.getElementById(listId).innerHTML = '<li style="color:#999;">ファイルが選択されていません</li>';
+            return;
+        }
+
+        document.getElementById(listId).innerHTML = '<li style="color:#666;">解析中...</li>';
+        
+        try {
+            const info = await getApngInfo(file);
+            if (isFg) fgFileInfoCache = info;
+            else bgFileInfoCache = info;
+        } catch (e) {
+            console.error(e);
+            document.getElementById(listId).innerHTML = '<li style="color:red;">解析エラー</li>';
+            if (isFg) fgFileInfoCache = null;
+            else bgFileInfoCache = null;
+        }
+    }
+
+    async function getApngInfo(file) {
+        const buffer = await readFile(file);
+        const img = UPNG.decode(buffer);
+        const loopCount = getApngLoopCount(buffer);
+        
+        const frameCount = img.frames ? img.frames.length : 1;
+        let totalDurationMs = 0;
+        if (img.frames) {
+            for (let i = 0; i < frameCount; i++) {
+                totalDurationMs += img.frames[i].delay || 100;
+            }
+        } else {
+            totalDurationMs = 100;
+        }
+        const totalDurationSec = (totalDurationMs / 1000).toFixed(2);
+        
+        return {
+            width: img.width,
+            height: img.height,
+            frameCount: frameCount,
+            loopCount: loopCount,
+            totalDurationSec: totalDurationSec,
+            fileSizeKb: (file.size / 1024).toFixed(2)
+        };
+    }
+
+    function updateFileInfoDisplay() {
+        const fgFile = document.getElementById('fgFile').files[0];
+        const bgFile = document.getElementById('bgFile').files[0];
+        
+        const sizeBase = document.getElementById('sizeBase').value;
+        const animBase = document.getElementById('animBase').value;
+        
+        if (fgFile || bgFile) {
+            document.getElementById('fileInfoArea').classList.remove('hidden');
+        } else {
+            document.getElementById('fileInfoArea').classList.add('hidden');
+        }
+
+        const fgTitle = document.getElementById('fgInfoTitle');
+        const bgTitle = document.getElementById('bgInfoTitle');
+        
+        fgTitle.innerHTML = "🖼️ 前景画像";
+        bgTitle.innerHTML = "🖼️ 後景画像";
+
+        if (fgFileInfoCache) {
+            document.getElementById('fgInfoList').innerHTML = formatInfoHtml(fgFileInfoCache, 'fg', sizeBase, animBase);
+        }
+        if (bgFileInfoCache) {
+            document.getElementById('bgInfoList').innerHTML = formatInfoHtml(bgFileInfoCache, 'bg', sizeBase, animBase);
+        }
+
+        const outOfBoundsHandlingArea = document.getElementById('outOfBoundsHandlingArea');
+        const overflowHandlingArea = document.getElementById('overflowHandlingArea');
+
+        if (fgFileInfoCache && bgFileInfoCache) {
+            const baseIsBg = (animBase === 'bg');
+            const baseFrameCount = baseIsBg ? bgFileInfoCache.frameCount : fgFileInfoCache.frameCount;
+            const nonBaseFrameCount = baseIsBg ? fgFileInfoCache.frameCount : bgFileInfoCache.frameCount;
+
+            if (baseFrameCount > nonBaseFrameCount) {
+                outOfBoundsHandlingArea.classList.remove('hidden');
+                overflowHandlingArea.classList.add('hidden');
+            } else if (baseFrameCount < nonBaseFrameCount) {
+                outOfBoundsHandlingArea.classList.add('hidden');
+                overflowHandlingArea.classList.remove('hidden');
+            } else {
+                outOfBoundsHandlingArea.classList.add('hidden');
+                overflowHandlingArea.classList.add('hidden');
+            }
+        } else {
+            outOfBoundsHandlingArea.classList.add('hidden');
+            overflowHandlingArea.classList.add('hidden');
+        }
+    }
+
+    function formatInfoHtml(info, type, sizeBase, animBase) {
+        let loopText = "";
+        if (info.loopCount === 0) {
+            loopText = `無限ループ <span style="font-size:12px; color:#666;">(1周 ${info.totalDurationSec}秒)</span>`;
+        } else {
+            const totalAllSec = (info.totalDurationSec * info.loopCount).toFixed(2);
+            loopText = `<strong>${info.loopCount} 回</strong> <span style="font-size:12px; color:#666;">(合計 ${totalAllSec} 秒)</span>`;
+        }
+        const sizeStr = info.fileSizeKb > 1024 ? (info.fileSizeKb / 1024).toFixed(2) + ' MB' : info.fileSizeKb + ' KB';
+        
+        const baseMark = " <span style='color:#007bff; font-weight:bold; font-size:12px; margin-left: 5px;'>★現在の基準</span>";
+        
+        const sizeMark = (type === sizeBase) ? baseMark : "";
+        const animMark = (type === animBase) ? baseMark : "";
+
+        return `
+            <li><strong>サイズ:</strong> ${info.width} × ${info.height} px${sizeMark}</li>
+            <li><strong>フレーム数:</strong> ${info.frameCount} フレーム${animMark}</li>
+            <li><strong>ループ設定:</strong> ${loopText}${animMark}</li>
+            <li><strong>ファイル容量:</strong> ${sizeStr}</li>
+        `;
+    }
+
+    function triggerEditorUpdate() {
+        const fgFile = document.getElementById('fgFile').files[0];
+        const bgFile = document.getElementById('bgFile').files[0];
+        if (fgFile && bgFile) {
+            updateEditor(fgFile, bgFile);
+        }
+    }
+
+    function getImageDataForEditor(file, isFg) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            if (isFg) {
+                if (currentFgUrl) URL.revokeObjectURL(currentFgUrl);
+                currentFgUrl = url;
+            } else {
+                if (currentBgUrl) URL.revokeObjectURL(currentBgUrl);
+                currentBgUrl = url;
+            }
+            const img = new Image();
+            img.onload = () => resolve({ width: img.width, height: img.height, url: url });
+            img.onerror = reject;
+            img.src = url;
+        });
+    }
+
+    async function updateEditor(fgFile, bgFile) {
+        document.getElementById('adjustArea').classList.remove('hidden');
+
+        const [fgData, bgData] = await Promise.all([
+            getImageDataForEditor(fgFile, true), 
+            getImageDataForEditor(bgFile, false)
+        ]);
+
+        const sizeBase = document.getElementById('sizeBase').value;
+        const isBgBase = sizeBase === 'bg';
+        
+        const baseData = isBgBase ? bgData : fgData;
+        
+        const wrapperWidth = document.getElementById('canvasWrapper').clientWidth - 40; 
+        const availableWidth = Math.max(100, wrapperWidth - WORK_MARGIN * 2);
+        canvasScale = baseData.width > availableWidth ? availableWidth / baseData.width : 1;
+        
+        const canvasW = baseData.width * canvasScale;
+        const canvasH = baseData.height * canvasScale;
+
+        fabricCanvasInstance.setWidth(canvasW + WORK_MARGIN * 2);
+        fabricCanvasInstance.setHeight(canvasH + WORK_MARGIN * 2);
+        fabricCanvasInstance.clear();
+
+        const exportBgRect = new fabric.Rect({
+            left: WORK_MARGIN,
+            top: WORK_MARGIN,
+            width: canvasW,
+            height: canvasH,
+            fill: '#ffffff',
+            selectable: false,
+            evented: false
+        });
+
+        const exportGuideRect = new fabric.Rect({
+            left: WORK_MARGIN,
+            top: WORK_MARGIN,
+            width: canvasW,
+            height: canvasH,
+            fill: 'transparent',
+            stroke: '#ff4757',
+            strokeWidth: 2,
+            strokeDashArray: [6, 4],
+            selectable: false,
+            evented: false
+        });
+
+        const commonStyle = {
+            originX: 'center',
+            originY: 'center',
+            transparentCorners: false,
+            cornerColor: '#007bff',
+            cornerStrokeColor: '#fff',
+            borderColor: '#007bff',
+            cornerSize: 12,
+            padding: 5
+        };
+
+        fabric.Image.fromURL(bgData.url, (bgImgObj) => {
+            fabric.Image.fromURL(fgData.url, (fgImgObj) => {
+                
+                let bgInitialScale = canvasScale;
+                if (!isBgBase) { 
+                    const fitScaleW = canvasW / bgData.width;
+                    const fitScaleH = canvasH / bgData.height;
+                    const fitScale = Math.min(fitScaleW, fitScaleH) * 0.8;
+                    if (fitScale < canvasScale) bgInitialScale = fitScale;
+                }
+                bgImgObj.set({
+                    ...commonStyle,
+                    left: WORK_MARGIN + canvasW / 2,
+                    top: WORK_MARGIN + canvasH / 2,
+                    scaleX: bgInitialScale,
+                    scaleY: bgInitialScale
+                });
+
+                let fgInitialScale = canvasScale;
+                if (isBgBase) { 
+                    const fitScaleW = canvasW / fgData.width;
+                    const fitScaleH = canvasH / fgData.height;
+                    const fitScale = Math.min(fitScaleW, fitScaleH) * 0.8;
+                    if (fitScale < canvasScale) fgInitialScale = fitScale;
+                }
+                fgImgObj.set({
+                    ...commonStyle,
+                    left: WORK_MARGIN + canvasW / 2,
+                    top: WORK_MARGIN + canvasH / 2,
+                    scaleX: fgInitialScale,
+                    scaleY: fgInitialScale
+                });
+
+                fgFabricObj = fgImgObj;
+                bgFabricObj = bgImgObj;
+
+                fabricCanvasInstance.add(exportBgRect);
+                fabricCanvasInstance.add(bgImgObj); 
+                fabricCanvasInstance.add(fgImgObj); 
+                fabricCanvasInstance.add(exportGuideRect); 
+
+                const initialTarget = isBgBase ? 'fg' : 'bg';
+                const radio = document.querySelector(`input[name="adjustTarget"][value="${initialTarget}"]`);
+                if(radio) radio.checked = true;
+                updateAdjustTarget(initialTarget);
+            });
+        });
+    }
+
+    function getApngLoopCount(buffer) {
+        const view = new DataView(buffer);
+        let offset = 8; 
+        while (offset < view.byteLength) {
+            const length = view.getUint32(offset);
+            const type = String.fromCharCode(view.getUint8(offset + 4), view.getUint8(offset + 5), view.getUint8(offset + 6), view.getUint8(offset + 7));
+            if (type === 'acTL') return view.getUint32(offset + 12);
+            offset += 12 + length;
+        }
+        return 0; 
+    }
+
+    function setApngLoopCount(buffer, loopCount) {
+        const view = new DataView(buffer);
+        let offset = 8;
+        while (offset < view.byteLength) {
+            const length = view.getUint32(offset);
+            const type = String.fromCharCode(view.getUint8(offset + 4), view.getUint8(offset + 5), view.getUint8(offset + 6), view.getUint8(offset + 7));
+            if (type === 'acTL') {
+                view.setUint32(offset + 12, loopCount);
+                const crcData = new Uint8Array(buffer, offset + 4, 4 + length);
+                view.setUint32(offset + 4 + 4 + length, crc32(crcData));
+                break;
+            }
+            offset += 12 + length;
+        }
+    }
+
+    function makeCRCTable() {
+        let c; const crcTable = [];
+        for(let n = 0; n < 256; n++){
+            c = n;
+            for(let k = 0; k < 8; k++){ c = ((c&1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1)); }
+            crcTable[n] = c;
+        }
+        return crcTable;
+    }
+    function crc32(arr) {
+        const crcTable = window.crcTable || (window.crcTable = makeCRCTable());
+        let crc = 0 ^ (-1);
+        for (let i = 0; i < arr.length; i++ ) { crc = (crc >>> 8) ^ crcTable[(crc ^ arr[i]) & 0xFF]; }
+        return (crc ^ (-1)) >>> 0;
+    }
+
+    function readFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    function setStatus(text) {
+        return new Promise(resolve => {
+            const statusEl = document.getElementById('status');
+            statusEl.innerText = text;
+            statusEl.classList.remove('hidden');
+            requestAnimationFrame(() => setTimeout(resolve, 50));
+        });
+    }
+
+    document.getElementById('processBtn').addEventListener('click', async () => {
+        const fgInput = document.getElementById('fgFile');
+        const bgInput = document.getElementById('bgFile');
+        const status = document.getElementById('status');
+        const resultArea = document.getElementById('resultArea');
+
+        if (!fgInput.files[0] || !bgInput.files[0] || !fgFabricObj || !bgFabricObj) {
+            alert('前景と後景のファイル両方を選択し、配置を決定してください。');
+            return;
+        }
+
+        const fgRelLeft = fgFabricObj.left - WORK_MARGIN;
+        const fgRelTop = fgFabricObj.top - WORK_MARGIN;
+        const fgActualLeft = fgRelLeft / canvasScale;
+        const fgActualTop = fgRelTop / canvasScale;
+        const fgActualScaleX = fgFabricObj.scaleX / canvasScale;
+        const fgActualScaleY = fgFabricObj.scaleY / canvasScale;
+        const fgAngle = fgFabricObj.angle;
+
+        const bgRelLeft = bgFabricObj.left - WORK_MARGIN;
+        const bgRelTop = bgFabricObj.top - WORK_MARGIN;
+        const bgActualLeft = bgRelLeft / canvasScale;
+        const bgActualTop = bgRelTop / canvasScale;
+        const bgActualScaleX = bgFabricObj.scaleX / canvasScale;
+        const bgActualScaleY = bgFabricObj.scaleY / canvasScale;
+        const bgAngle = bgFabricObj.angle;
+
+        resultArea.classList.add('hidden');
+        document.getElementById('processBtn').disabled = true;
+
+        try {
+            await setStatus('ファイルを読み込み中...');
+            const fgBuffer = await readFile(fgInput.files[0]);
+            const bgBuffer = await readFile(bgInput.files[0]);
+
+            await setStatus('APNGを解析中...');
+            const fgImg = UPNG.decode(fgBuffer);
+            const bgImg = UPNG.decode(bgBuffer);
+
+            const fgFramesRGBA = UPNG.toRGBA8(fgImg);
+            const bgFramesRGBA = UPNG.toRGBA8(bgImg);
+
+            const sizeBase = document.getElementById('sizeBase').value;
+            const animBase = document.getElementById('animBase').value;
+
+            const sizeImg = (sizeBase === 'bg') ? bgImg : fgImg;
+            const resultWidth = sizeImg.width;
+            const resultHeight = sizeImg.height;
+
+            const animImg = (animBase === 'bg') ? bgImg : fgImg;
+            const animFramesRGBA = (animBase === 'bg') ? bgFramesRGBA : fgFramesRGBA;
+            const baseFrameCount = animFramesRGBA.length;
+
+            const loopBuffer = (animBase === 'bg') ? bgBuffer : fgBuffer;
+            const baseLoopCount = getApngLoopCount(loopBuffer);
+
+            const bgFrameCount = bgFramesRGBA.length;
+            const fgFrameCount = fgFramesRGBA.length;
+
+            const handlingMode = document.querySelector('input[name="outOfBoundsHandling"]:checked').value;
+            const overflowMode = document.querySelector('input[name="overflowHandling"]:checked').value;
+
+            let fgOffset = 0;
+            let bgOffset = 0;
+
+            if (baseFrameCount < fgFrameCount && overflowMode === 'head') {
+                fgOffset = fgFrameCount - baseFrameCount;
+            }
+            if (baseFrameCount < bgFrameCount && overflowMode === 'head') {
+                bgOffset = bgFrameCount - baseFrameCount;
+            }
+
+            const resultFramesBuffer = [];
+            const delays = [];
+            generatedFrames = []; 
+
+            for (let i = 0; i < baseFrameCount; i++) {
+                if (i % 5 === 0) await setStatus(`フレーム合成中... (${i + 1}/${baseFrameCount})`);
+
+                const delay = (animImg.frames && animImg.frames[i]) ? (animImg.frames[i].delay || 100) : 100;
+                delays.push(delay);
+
+                let bgIndex = i + bgOffset;
+                let fgIndex = i + fgOffset;
+
+                if (i >= bgFrameCount) {
+                    bgIndex = handlingMode === 'loop' ? (i % bgFrameCount) : (bgFrameCount - 1);
+                }
+                if (i >= fgFrameCount) {
+                    fgIndex = handlingMode === 'loop' ? (i % fgFrameCount) : (fgFrameCount - 1);
+                }
+
+                const bgFrameData = new Uint8ClampedArray(bgFramesRGBA[bgIndex]);
+                const fgFrameData = new Uint8ClampedArray(fgFramesRGBA[fgIndex]);
+
+                const canvas = document.createElement('canvas');
+                canvas.width = resultWidth;
+                canvas.height = resultHeight;
+                const ctx = canvas.getContext('2d');
+
+                const bgImageData = new ImageData(bgFrameData, bgImg.width, bgImg.height);
+                const bgCanvas = document.createElement('canvas');
+                bgCanvas.width = bgImg.width; bgCanvas.height = bgImg.height;
+                bgCanvas.getContext('2d').putImageData(bgImageData, 0, 0);
+
+                const fgImageData = new ImageData(fgFrameData, fgImg.width, fgImg.height);
+                const fgCanvas = document.createElement('canvas');
+                fgCanvas.width = fgImg.width; fgCanvas.height = fgImg.height;
+                fgCanvas.getContext('2d').putImageData(fgImageData, 0, 0);
+
+                ctx.save();
+                ctx.translate(bgActualLeft, bgActualTop);
+                ctx.rotate(bgAngle * Math.PI / 180);
+                ctx.scale(bgActualScaleX, bgActualScaleY);
+                ctx.drawImage(bgCanvas, -bgImg.width / 2, -bgImg.height / 2);
+                ctx.restore();
+
+                ctx.save();
+                ctx.translate(fgActualLeft, fgActualTop);
+                ctx.rotate(fgAngle * Math.PI / 180);
+                ctx.scale(fgActualScaleX, fgActualScaleY);
+                ctx.drawImage(fgCanvas, -fgImg.width / 2, -fgImg.height / 2);
+                ctx.restore();
+
+                const resultImageData = ctx.getImageData(0, 0, resultWidth, resultHeight);
+
+                const pixels = resultImageData.data;
+                for (let j = 0; j < pixels.length; j += 4) {
+                    if (pixels[j + 3] === 0) { 
+                        pixels[j] = 0;     
+                        pixels[j + 1] = 0; 
+                        pixels[j + 2] = 0; 
+                    }
+                }
+
+                resultFramesBuffer.push(resultImageData.data.buffer);
+                generatedFrames.push(canvas);
+            }
+
+            currentEncodingData = {
+                framesBuffer: resultFramesBuffer,
+                width: resultWidth,
+                height: resultHeight,
+                delays: delays,
+                loopCount: baseLoopCount
+            };
+
+            await setStatus('APNGをエンコード中...\n※処理が重いため、数十秒ほど画面が固まったようになります');
+            const apngBuffer = UPNG.encode(resultFramesBuffer, resultWidth, resultHeight, 0, delays);
+            
+            setApngLoopCount(apngBuffer, baseLoopCount);
+
+            // 前回のタイマーが残っていたらリセット
+            if (previewTimeout) {
+                clearTimeout(previewTimeout);
+                previewTimeout = null;
+            }
+
+            // --- ★修正箇所: プレビュー画面の1フレーム目差し替え処理 ---
+            const currentPreview = document.getElementById('preview');
+            
+            // 古いオブジェクトURLのメモリ解放
+            if (currentPreview.src && currentPreview.src.startsWith('blob:')) {
+                URL.revokeObjectURL(currentPreview.src);
+            }
+
+            generatedApngBlob = new Blob([apngBuffer], { type: 'image/png' });
+            const newObjUrl = URL.createObjectURL(generatedApngBlob);
+            
+            const totalDurationMs = delays.reduce((acc, d) => acc + d, 0);
+            const totalDurationSec = (totalDurationMs / 1000).toFixed(2);
+
+            if (baseLoopCount > 0) {
+                const playTimeMs = totalDurationMs * baseLoopCount;
+                const firstFrameDataUrl = generatedFrames[0].toDataURL('image/png'); // 1コマ目の静止画
+                
+                // 画像が読み込まれて（再生が開始されて）からタイマーをセットする
+                currentPreview.onload = () => {
+                    currentPreview.onload = null; // 1度だけ実行
+                    if (previewTimeout) clearTimeout(previewTimeout);
+                    
+                    previewTimeout = setTimeout(() => {
+                        // ブラウザの表示・状態キャッシュをリセットして確実に置き換えるため、要素自体を再生成する
+                        const previewToReplace = document.getElementById('preview');
+                        if (previewToReplace && previewToReplace.src.startsWith('blob:')) {
+                            const newPreview = previewToReplace.cloneNode(true);
+                            newPreview.src = firstFrameDataUrl;
+                            newPreview.onload = null;
+                            previewToReplace.parentNode.replaceChild(newPreview, previewToReplace);
+                        }
+                    }, playTimeMs + 100); // 停止してから切り替わるよう100msのバッファを追加
+                };
+            } else {
+                currentPreview.onload = null;
+            }
+            
+            currentPreview.src = newObjUrl;
+            // -------------------------------------------------------------
+
+            let loopText = "";
+            if (baseLoopCount === 0) {
+                loopText = `無限ループ <span style="font-size:12px; color:#666;">(1周 ${totalDurationSec}秒)</span>`;
+            } else {
+                const totalAllSec = (totalDurationSec * baseLoopCount).toFixed(2);
+                loopText = `<strong>${baseLoopCount} 回</strong> <span style="font-size:12px; color:#666;">(1周 ${totalDurationSec}秒 × ${baseLoopCount}回 = 合計 ${totalAllSec} 秒)</span>`;
+            }
+
+            const fileSizeKb = (apngBuffer.byteLength / 1024).toFixed(2);
+            const fileSizeStr = fileSizeKb > 1024 ? `${(fileSizeKb / 1024).toFixed(2)} MB` : `${fileSizeKb} KB`;
+
+            document.getElementById('resultInfo').innerHTML = `
+                <li><strong>画像サイズ:</strong> ${resultWidth} × ${resultHeight} px</li>
+                <li><strong>フレーム数:</strong> ${baseFrameCount} フレーム</li>
+                <li><strong>ループ設定:</strong> ${loopText}</li>
+                <li><strong>ファイル容量:</strong> ${fileSizeStr}</li>
+            `;
+
+            const btn300 = document.getElementById('download300kbBtn');
+            const btn1mb = document.getElementById('download1mbBtn');
+            const btnOrig = document.getElementById('downloadOriginalBtn');
+            const totalBytes = apngBuffer.byteLength;
+            const bytes1MB = 1024 * 1024;
+            const bytes300KB = 300 * 1024;
+
+            if (totalBytes > bytes1MB) {
+                btn300.classList.remove('hidden');
+                btn1mb.classList.remove('hidden');
+                btnOrig.textContent = '元の容量でAPNG保存';
+                btnOrig.classList.remove('hidden');
+            } else if (totalBytes >= bytes300KB) {
+                btn300.classList.remove('hidden');
+                btn1mb.classList.add('hidden');
+                btnOrig.textContent = '元の容量でAPNG保存';
+                btnOrig.classList.remove('hidden');
+            } else {
+                btn300.classList.add('hidden');
+                btn1mb.classList.add('hidden');
+                btnOrig.textContent = 'APNGとして保存';
+                btnOrig.classList.remove('hidden');
+            }
+
+            resultArea.classList.remove('hidden');
+            status.classList.add('hidden');
+
+            resultArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        } catch (e) {
+            console.error(e);
+            alert('エラーが発生しました。ファイルが破損しているか、非対応の形式の可能性があります。');
+            status.classList.add('hidden');
+        } finally {
+            document.getElementById('processBtn').disabled = false;
+        }
+    });
+
+    document.getElementById('replayBtn').addEventListener('click', () => {
+        if (!generatedApngBlob) return;
+        const currentPreview = document.getElementById('preview');
+
+        // タイマーをリセット
+        if (previewTimeout) {
+            clearTimeout(previewTimeout);
+            previewTimeout = null;
+        }
+
+        const oldSrc = currentPreview.src;
+        
+        // --- ★修正箇所: リプレイ時も同様に、要素をリセットしてから再生する ---
+        const tempPreview = currentPreview.cloneNode(true);
+        tempPreview.src = '';
+        currentPreview.parentNode.replaceChild(tempPreview, currentPreview);
+
+        setTimeout(() => {
+            const preview = document.getElementById('preview');
+            const newUrl = URL.createObjectURL(generatedApngBlob);
+            
+            if (oldSrc && oldSrc.startsWith('blob:')) {
+                URL.revokeObjectURL(oldSrc);
+            }
+
+            const loopCount = currentEncodingData.loopCount;
+            if (loopCount > 0) {
+                const totalDurationMs = currentEncodingData.delays.reduce((acc, d) => acc + d, 0);
+                const playTimeMs = totalDurationMs * loopCount;
+                const firstFrameDataUrl = generatedFrames[0].toDataURL('image/png');
+
+                preview.onload = () => {
+                    preview.onload = null;
+                    if (previewTimeout) clearTimeout(previewTimeout);
+                    previewTimeout = setTimeout(() => {
+                        const previewToReplace = document.getElementById('preview');
+                        if (previewToReplace && previewToReplace.src.startsWith('blob:')) {
+                            const newPreview = previewToReplace.cloneNode(true);
+                            newPreview.src = firstFrameDataUrl;
+                            newPreview.onload = null;
+                            previewToReplace.parentNode.replaceChild(newPreview, previewToReplace);
+                        }
+                    }, playTimeMs + 100);
+                };
+            } else {
+                preview.onload = null;
+            }
+            preview.src = newUrl;
+        }, 10);
+        // -----------------------------------------------------------------
+    });
+
+    async function saveBlob(blob, filename) {
+        const file = new File([blob], filename, { type: 'image/png' });
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+        if (isMobile && navigator.canShare && navigator.canShare({ files: [file] })) {
+            try { await navigator.share({ files: [file], title: '合成APNG画像' }); } catch (err) {}
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+    }
+
+    async function compressAndDownload(targetBytes, filename, btnId) {
+        if (!currentEncodingData) return;
+        
+        const btn = document.getElementById(btnId);
+        btn.disabled = true;
+
+        let workFrames = currentEncodingData.framesBuffer;
+        let workDelays = [...currentEncodingData.delays];
+
+        const colorStrategies = [256, 220, 180, 150, 120, 90, 70, 50, 30, 16];
+        
+        let bestBuffer = null;
+
+        try {
+            for (let i = 0; i < colorStrategies.length; i++) {
+                const cnum = colorStrategies[i];
+                
+                const statusMsg = `容量調整中... (減色レベル: ${cnum}色)\n※処理が重いため、数秒〜数十秒ほど画面が固まったようになります`;
+                await setStatus(statusMsg);
+                
+                const apngBuffer = UPNG.encode(
+                    workFrames,
+                    currentEncodingData.width,
+                    currentEncodingData.height,
+                    cnum,
+                    workDelays
+                );
+                setApngLoopCount(apngBuffer, currentEncodingData.loopCount);
+                bestBuffer = apngBuffer;
+
+                if (apngBuffer.byteLength <= targetBytes) {
+                    break;
+                }
+            }
+
+            if (bestBuffer) {
+                await setStatus('保存の準備をしています...');
+                const blob = new Blob([bestBuffer], { type: 'image/png' });
+                await saveBlob(blob, filename);
+            }
+        } catch (e) {
+            console.error(e);
+            alert('圧縮処理中にエラーが発生しました。');
+        } finally {
+            document.getElementById('status').classList.add('hidden');
+            btn.disabled = false;
+        }
+    }
+
+    document.getElementById('download300kbBtn').addEventListener('click', () => {
+        compressAndDownload(300 * 1024, 'merged_apng_300kb.png', 'download300kbBtn');
+    });
+
+    document.getElementById('download1mbBtn').addEventListener('click', () => {
+        compressAndDownload(1024 * 1024, 'merged_apng_1mb.png', 'download1mbBtn');
+    });
+
+    document.getElementById('downloadOriginalBtn').addEventListener('click', async () => {
+        if (!generatedApngBlob) return;
+        const btn = document.getElementById('downloadOriginalBtn');
+        btn.disabled = true;
+        await setStatus('保存の準備をしています...');
+        try {
+            await saveBlob(generatedApngBlob, 'merged_apng.png');
+        } finally {
+            document.getElementById('status').classList.add('hidden');
+            btn.disabled = false;
+        }
+    });
+
+    document.getElementById('downloadZipBtn').addEventListener('click', async () => {
+        if (generatedFrames.length === 0) return;
+        const zip = new JSZip();
+        
+        const btn = document.getElementById('downloadZipBtn');
+        btn.disabled = true;
+
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        const timeStr = `${hh}${mm}${ss}`;       
+
+        try {
+            for (let i = 0; i < generatedFrames.length; i++) {
+                if (i % 10 === 0) await setStatus(`ZIPに圧縮中... (${i + 1}/${generatedFrames.length})`);
+                const canvas = generatedFrames[i];
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                
+                const num = String(i + 1).padStart(2, '0');
+                zip.file(`${timeStr}_${num}_frame.png`, blob);                
+            }
+
+            await setStatus('ZIPをダウンロードしています...');
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            
+            const filename = 'frames.zip';
+            const file = new File([zipBlob], filename, { type: 'application/zip' });
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+            if (isMobile && navigator.canShare && navigator.canShare({ files: [file] })) {
+                try { await navigator.share({ files: [file], title: '分割フレームZIP' }); } catch (err) {}
+            } else {
+                const url = URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+        } catch (e) {
+            console.error(e);
+            alert('ZIP作成中にエラーが発生しました。');
+        } finally {
+            document.getElementById('status').classList.add('hidden');
+            btn.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>
