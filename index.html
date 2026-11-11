@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>APNG 合成ツール完全版</title>
+    <title>APNG 合成ツール完全版（フレーム並び替え対応）</title>
     <style>
         body {
             font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
@@ -159,6 +159,50 @@
             box-shadow: 0 5px 20px rgba(0,0,0,0.5);
             border-radius: 4px;
         }
+        
+        /* フレーム並べ替えギャラリー用スタイル */
+        #gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+            justify-items: center;
+            min-height: 120px;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border: 1px dashed #c0ccda;
+        }
+        .frame-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #666;
+            cursor: grab;
+            background: white;
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: box-shadow 0.2s;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .frame-item:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+        .frame-item:active { cursor: grabbing; }
+        .sortable-ghost { opacity: 0.4; }
+        
+        .frame-preview {
+            width: 100%;
+            aspect-ratio: 1/1;
+            object-fit: contain;
+            border: 1px solid #e0e6ed;
+            border-radius: 4px;
+            background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAOklEQVQYV2NkYMDQzEADYAQyGBgY//P//x/EDGQxjJqA4tDI8K/lP0j5f35mRBmF7hB0D1BtoIkDAwCW2SDBAwwiRQAAAABJRU5ErkJggg==');
+            margin-bottom: 8px;
+            pointer-events: none;
+        }
 
         /* スマホ向けレスポンシブ */
         @media (max-width: 650px) {
@@ -291,7 +335,7 @@
 
 <div id="resultArea" class="box hidden">
     <h3>4. 合成結果</h3>
-    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch;">
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch; margin-bottom: 20px;">
         <div style="flex: 1; min-width: 250px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center;">
             
             <div style="margin-bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;">
@@ -301,7 +345,8 @@
                 <button class="bg-switch-btn" data-bg="bg-line">水色(LINE風)</button>
             </div>
 
-            <img id="preview" class="bg-checker" alt="合成プレビュー">
+            <!-- BlobではなくCanvasを用いてプレビュー表示 -->
+            <canvas id="preview" class="bg-checker" alt="合成プレビュー"></canvas>
             
             <div style="margin-top: 15px;">
                 <button id="replayBtn" class="btn btn-replay">🔄 プレビューを最初から再生</button>
@@ -315,7 +360,14 @@
         </div>
     </div>
 
-    <div style="text-align: center; margin-top: 20px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+    <!-- 追加: ギャラリー領域 -->
+    <div style="background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6; padding: 15px; margin-bottom: 20px;">
+        <h4 style="margin-top: 0; color: #495057; font-size: 15px;">🔄 フレームの並び替え (ドラッグ＆ドロップ)</h4>
+        <p style="font-size: 13px; color: #666; margin-bottom: 10px;">下のフレームをドラッグ＆ドロップすると順序を変更できます。並べ替えた順序でプレビューや保存データに即時反映されます。</p>
+        <div id="gallery"></div>
+    </div>
+
+    <div style="text-align: center; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
         <button id="download300kbBtn" class="btn btn-warning hidden">300KB以下でAPNG保存</button>
         <button id="download1mbBtn" class="btn btn-warning hidden">1MB以下でAPNG保存</button>
         <button id="downloadOriginalBtn" class="btn">元の容量でAPNG保存</button>
@@ -323,16 +375,25 @@
     </div>
 </div>
 
+<!-- ライブラリの読み込み -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 
 <script>
-    let generatedApngBlob = null;
-    let generatedFrames = []; 
+    let extractedFrames = []; // 生成された全フレーム情報を保持 { id, buffer, canvas, delay, dataUrl }
+    let sortedFrames = [];    // 並び替え後の順番のフレーム情報を保持
     let currentEncodingData = null; 
-    let previewTimeout = null;
+
+    // アニメーションプレビュー管理用
+    let sortableInstance = null;
+    let animationId = null;
+    let isAnimating = false;
+    let previewIndex = 0;
+    let playedLoops = 0;
+    let lastTime = 0;
 
     let fabricCanvasInstance = null;
     let canvasScale = 1;         
@@ -817,6 +878,11 @@
         resultArea.classList.add('hidden');
         document.getElementById('processBtn').disabled = true;
 
+        if(animationId) {
+            cancelAnimationFrame(animationId);
+            isAnimating = false;
+        }
+
         try {
             await setStatus('ファイルを読み込み中...');
             const fgBuffer = await readFile(fgInput.files[0]);
@@ -859,15 +925,15 @@
                 bgOffset = bgFrameCount - baseFrameCount;
             }
 
-            const resultFramesBuffer = [];
-            const delays = [];
-            generatedFrames = []; 
+            extractedFrames = []; // クリア
+            const tempFramesBuffer = []; // 初期容量確認用
+            const tempDelays = [];
 
             for (let i = 0; i < baseFrameCount; i++) {
                 if (i % 5 === 0) await setStatus(`フレーム合成中... (${i + 1}/${baseFrameCount})`);
 
                 const delay = (animImg.frames && animImg.frames[i]) ? (animImg.frames[i].delay || 100) : 100;
-                delays.push(delay);
+                tempDelays.push(delay);
 
                 let bgIndex = i + bgOffset;
                 let fgIndex = i + fgOffset;
@@ -922,69 +988,36 @@
                     }
                 }
 
-                resultFramesBuffer.push(resultImageData.data.buffer);
-                generatedFrames.push(canvas);
+                const buf = resultImageData.data.buffer;
+                tempFramesBuffer.push(buf);
+
+                const frameCanvas = document.createElement('canvas');
+                frameCanvas.width = resultWidth; frameCanvas.height = resultHeight;
+                frameCanvas.getContext('2d').putImageData(resultImageData, 0, 0);
+                const dataUrl = frameCanvas.toDataURL('image/png');
+
+                extractedFrames.push({
+                    id: `frame-${Date.now()}-${i}`,
+                    buffer: buf,
+                    canvas: frameCanvas,
+                    delay: delay,
+                    dataUrl: dataUrl
+                });
             }
 
+            sortedFrames = [...extractedFrames];
+
             currentEncodingData = {
-                framesBuffer: resultFramesBuffer,
                 width: resultWidth,
                 height: resultHeight,
-                delays: delays,
                 loopCount: baseLoopCount
             };
 
-            await setStatus('APNGをエンコード中...\n※処理が重いため、数十秒ほど画面が固まったようになります');
-            const apngBuffer = UPNG.encode(resultFramesBuffer, resultWidth, resultHeight, 0, delays);
+            await setStatus('容量計算のためAPNGをテストエンコード中...\n※処理が重いため、数十秒ほど画面が固まったようになります');
+            const apngBuffer = UPNG.encode(tempFramesBuffer, resultWidth, resultHeight, 0, tempDelays);
             
-            setApngLoopCount(apngBuffer, baseLoopCount);
-
-            // 前回のタイマーが残っていたらリセット
-            if (previewTimeout) {
-                clearTimeout(previewTimeout);
-                previewTimeout = null;
-            }
-
-            // --- ★修正箇所: プレビュー画面の1フレーム目差し替え処理 ---
-            const currentPreview = document.getElementById('preview');
-            
-            // 古いオブジェクトURLのメモリ解放
-            if (currentPreview.src && currentPreview.src.startsWith('blob:')) {
-                URL.revokeObjectURL(currentPreview.src);
-            }
-
-            generatedApngBlob = new Blob([apngBuffer], { type: 'image/png' });
-            const newObjUrl = URL.createObjectURL(generatedApngBlob);
-            
-            const totalDurationMs = delays.reduce((acc, d) => acc + d, 0);
+            const totalDurationMs = tempDelays.reduce((acc, d) => acc + d, 0);
             const totalDurationSec = (totalDurationMs / 1000).toFixed(2);
-
-            if (baseLoopCount > 0) {
-                const playTimeMs = totalDurationMs * baseLoopCount;
-                const firstFrameDataUrl = generatedFrames[0].toDataURL('image/png'); // 1コマ目の静止画
-                
-                // 画像が読み込まれて（再生が開始されて）からタイマーをセットする
-                currentPreview.onload = () => {
-                    currentPreview.onload = null; // 1度だけ実行
-                    if (previewTimeout) clearTimeout(previewTimeout);
-                    
-                    previewTimeout = setTimeout(() => {
-                        // ブラウザの表示・状態キャッシュをリセットして確実に置き換えるため、要素自体を再生成する
-                        const previewToReplace = document.getElementById('preview');
-                        if (previewToReplace && previewToReplace.src.startsWith('blob:')) {
-                            const newPreview = previewToReplace.cloneNode(true);
-                            newPreview.src = firstFrameDataUrl;
-                            newPreview.onload = null;
-                            previewToReplace.parentNode.replaceChild(newPreview, previewToReplace);
-                        }
-                    }, playTimeMs + 100); // 停止してから切り替わるよう100msのバッファを追加
-                };
-            } else {
-                currentPreview.onload = null;
-            }
-            
-            currentPreview.src = newObjUrl;
-            // -------------------------------------------------------------
 
             let loopText = "";
             if (baseLoopCount === 0) {
@@ -1001,7 +1034,7 @@
                 <li><strong>画像サイズ:</strong> ${resultWidth} × ${resultHeight} px</li>
                 <li><strong>フレーム数:</strong> ${baseFrameCount} フレーム</li>
                 <li><strong>ループ設定:</strong> ${loopText}</li>
-                <li><strong>ファイル容量:</strong> ${fileSizeStr}</li>
+                <li><strong>ファイル容量:</strong> ${fileSizeStr} (保存前目安)</li>
             `;
 
             const btn300 = document.getElementById('download300kbBtn');
@@ -1028,6 +1061,13 @@
                 btnOrig.classList.remove('hidden');
             }
 
+            // ギャラリーの構築とSortable初期化
+            buildGallery();
+            initSortable();
+
+            // プレビュー開始
+            startPreview();
+
             resultArea.classList.remove('hidden');
             status.classList.add('hidden');
 
@@ -1042,58 +1082,123 @@
         }
     });
 
-    document.getElementById('replayBtn').addEventListener('click', () => {
-        if (!generatedApngBlob) return;
-        const currentPreview = document.getElementById('preview');
-
-        // タイマーをリセット
-        if (previewTimeout) {
-            clearTimeout(previewTimeout);
-            previewTimeout = null;
-        }
-
-        const oldSrc = currentPreview.src;
-        
-        // --- ★修正箇所: リプレイ時も同様に、要素をリセットしてから再生する ---
-        const tempPreview = currentPreview.cloneNode(true);
-        tempPreview.src = '';
-        currentPreview.parentNode.replaceChild(tempPreview, currentPreview);
-
-        setTimeout(() => {
-            const preview = document.getElementById('preview');
-            const newUrl = URL.createObjectURL(generatedApngBlob);
+    // ----------------------------------------------------
+    // ギャラリー・並べ替え関連の処理
+    // ----------------------------------------------------
+    function buildGallery() {
+        const gallery = document.getElementById('gallery');
+        gallery.innerHTML = '';
+        sortedFrames.forEach((frame, index) => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'frame-item';
+            itemDiv.dataset.id = frame.id;
             
-            if (oldSrc && oldSrc.startsWith('blob:')) {
-                URL.revokeObjectURL(oldSrc);
-            }
+            const imgPreview = document.createElement('img');
+            imgPreview.src = frame.dataUrl;
+            imgPreview.className = "frame-preview";
+            
+            const label = document.createElement('span');
+            label.className = "frame-label";
+            label.textContent = `Frame ${index + 1}`;
+            
+            itemDiv.appendChild(imgPreview);
+            itemDiv.appendChild(label);
+            gallery.appendChild(itemDiv);
+        });
+    }
 
-            const loopCount = currentEncodingData.loopCount;
-            if (loopCount > 0) {
-                const totalDurationMs = currentEncodingData.delays.reduce((acc, d) => acc + d, 0);
-                const playTimeMs = totalDurationMs * loopCount;
-                const firstFrameDataUrl = generatedFrames[0].toDataURL('image/png');
+    function initSortable() {
+        const gallery = document.getElementById('gallery');
+        if (sortableInstance) sortableInstance.destroy();
+        sortableInstance = new Sortable(gallery, {
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            onEnd: updateFrameOrder
+        });
+    }
 
-                preview.onload = () => {
-                    preview.onload = null;
-                    if (previewTimeout) clearTimeout(previewTimeout);
-                    previewTimeout = setTimeout(() => {
-                        const previewToReplace = document.getElementById('preview');
-                        if (previewToReplace && previewToReplace.src.startsWith('blob:')) {
-                            const newPreview = previewToReplace.cloneNode(true);
-                            newPreview.src = firstFrameDataUrl;
-                            newPreview.onload = null;
-                            previewToReplace.parentNode.replaceChild(newPreview, previewToReplace);
-                        }
-                    }, playTimeMs + 100);
-                };
-            } else {
-                preview.onload = null;
+    function updateFrameOrder() {
+        const gallery = document.getElementById('gallery');
+        const newSorted = [];
+        const items = gallery.querySelectorAll('.frame-item');
+        items.forEach((item, index) => {
+            const frameId = item.dataset.id;
+            const frameData = extractedFrames.find(f => f.id === frameId);
+            if (frameData) {
+                newSorted.push(frameData);
+                item.querySelector('.frame-label').textContent = `Frame ${index + 1}`;
             }
-            preview.src = newUrl;
-        }, 10);
-        // -----------------------------------------------------------------
+        });
+        sortedFrames = newSorted;
+        
+        // プレビューをリセットして再開
+        startPreview();
+    }
+
+    // ----------------------------------------------------
+    // Canvasプレビュー関連の処理
+    // ----------------------------------------------------
+    function startPreview() {
+        if (animationId) cancelAnimationFrame(animationId);
+        isAnimating = true;
+        previewIndex = 0;
+        playedLoops = 0;
+        lastTime = performance.now();
+        
+        const previewCanvas = document.getElementById('preview');
+        if (sortedFrames.length > 0) {
+            previewCanvas.width = currentEncodingData.width;
+            previewCanvas.height = currentEncodingData.height;
+        }
+        
+        drawCurrentFrame();
+        animationId = requestAnimationFrame(renderPreview);
+    }
+
+    function drawCurrentFrame() {
+        if (sortedFrames.length === 0) return;
+        const currentFrame = sortedFrames[previewIndex];
+        const previewCanvas = document.getElementById('preview');
+        const ctx = previewCanvas.getContext('2d');
+        ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+        ctx.drawImage(currentFrame.canvas, 0, 0);
+    }
+
+    function renderPreview(time) {
+        if (!isAnimating || sortedFrames.length === 0) return;
+        
+        const currentFrame = sortedFrames[previewIndex];
+        if (time - lastTime >= currentFrame.delay) {
+            drawCurrentFrame();
+            
+            lastTime = time;
+            previewIndex++;
+            
+            if (previewIndex >= sortedFrames.length) {
+                previewIndex = 0;
+                if (currentEncodingData.loopCount > 0) {
+                    playedLoops++;
+                    if (playedLoops >= currentEncodingData.loopCount) {
+                        isAnimating = false;
+                        previewIndex = 0;
+                        drawCurrentFrame();
+                        return;
+                    }
+                }
+            }
+        }
+        if (isAnimating) {
+            animationId = requestAnimationFrame(renderPreview);
+        }
+    }
+
+    document.getElementById('replayBtn').addEventListener('click', () => {
+        startPreview();
     });
 
+    // ----------------------------------------------------
+    // 保存・ダウンロード関連の処理
+    // ----------------------------------------------------
     async function saveBlob(blob, filename) {
         const file = new File([blob], filename, { type: 'image/png' });
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -1111,23 +1216,23 @@
     }
 
     async function compressAndDownload(targetBytes, filename, btnId) {
-        if (!currentEncodingData) return;
+        if (!currentEncodingData || sortedFrames.length === 0) return;
         
         const btn = document.getElementById(btnId);
         btn.disabled = true;
 
-        let workFrames = currentEncodingData.framesBuffer;
-        let workDelays = [...currentEncodingData.delays];
+        // 現在のソート順に基づいてバッファとdelayを用意
+        const workFrames = sortedFrames.map(f => f.buffer);
+        const workDelays = sortedFrames.map(f => f.delay);
 
         const colorStrategies = [256, 220, 180, 150, 120, 90, 70, 50, 30, 16];
-        
         let bestBuffer = null;
 
         try {
             for (let i = 0; i < colorStrategies.length; i++) {
                 const cnum = colorStrategies[i];
                 
-                const statusMsg = `容量調整中... (減色レベル: ${cnum}色)\n※処理が重いため、数秒〜数十秒ほど画面が固まったようになります`;
+                const statusMsg = `並び替え順で容量調整中... (減色レベル: ${cnum}色)\n※処理が重いため、数秒〜数十秒ほど画面が固まったようになります`;
                 await setStatus(statusMsg);
                 
                 const apngBuffer = UPNG.encode(
@@ -1168,12 +1273,30 @@
     });
 
     document.getElementById('downloadOriginalBtn').addEventListener('click', async () => {
-        if (!generatedApngBlob) return;
+        if (!currentEncodingData || sortedFrames.length === 0) return;
         const btn = document.getElementById('downloadOriginalBtn');
         btn.disabled = true;
-        await setStatus('保存の準備をしています...');
+        await setStatus('現在の並び替え順でAPNGを生成しています...\n※処理が重いため、画面が固まったようになります');
+        
         try {
-            await saveBlob(generatedApngBlob, 'merged_apng.png');
+            const workFrames = sortedFrames.map(f => f.buffer);
+            const workDelays = sortedFrames.map(f => f.delay);
+            
+            const apngBuffer = UPNG.encode(
+                workFrames,
+                currentEncodingData.width,
+                currentEncodingData.height,
+                0,
+                workDelays
+            );
+            setApngLoopCount(apngBuffer, currentEncodingData.loopCount);
+            const blob = new Blob([apngBuffer], { type: 'image/png' });
+            
+            await setStatus('保存の準備をしています...');
+            await saveBlob(blob, 'merged_apng.png');
+        } catch (e) {
+            console.error(e);
+            alert('保存中にエラーが発生しました。');
         } finally {
             document.getElementById('status').classList.add('hidden');
             btn.disabled = false;
@@ -1181,7 +1304,7 @@
     });
 
     document.getElementById('downloadZipBtn').addEventListener('click', async () => {
-        if (generatedFrames.length === 0) return;
+        if (sortedFrames.length === 0) return;
         const zip = new JSZip();
         
         const btn = document.getElementById('downloadZipBtn');
@@ -1194,9 +1317,9 @@
         const timeStr = `${hh}${mm}${ss}`;       
 
         try {
-            for (let i = 0; i < generatedFrames.length; i++) {
-                if (i % 10 === 0) await setStatus(`ZIPに圧縮中... (${i + 1}/${generatedFrames.length})`);
-                const canvas = generatedFrames[i];
+            for (let i = 0; i < sortedFrames.length; i++) {
+                if (i % 10 === 0) await setStatus(`並び替え順でZIPに圧縮中... (${i + 1}/${sortedFrames.length})`);
+                const canvas = sortedFrames[i].canvas;
                 const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
                 
                 const num = String(i + 1).padStart(2, '0');
