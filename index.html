@@ -740,13 +740,8 @@
         fabric.Image.fromURL(bgData.url, (bgImgObj) => {
             fabric.Image.fromURL(fgData.url, (fgImgObj) => {
                 
+                // サイズに関わらず常に等倍（100%）で配置
                 let bgInitialScale = canvasScale;
-                if (!isBgBase) { 
-                    const fitScaleW = canvasW / bgData.width;
-                    const fitScaleH = canvasH / bgData.height;
-                    const fitScale = Math.min(fitScaleW, fitScaleH) * 0.8;
-                    if (fitScale < canvasScale) bgInitialScale = fitScale;
-                }
                 bgImgObj.set({
                     ...commonStyle,
                     left: WORK_MARGIN + canvasW / 2,
@@ -756,12 +751,6 @@
                 });
 
                 let fgInitialScale = canvasScale;
-                if (isBgBase) { 
-                    const fitScaleW = canvasW / fgData.width;
-                    const fitScaleH = canvasH / fgData.height;
-                    const fitScale = Math.min(fitScaleW, fitScaleH) * 0.8;
-                    if (fitScale < canvasScale) fgInitialScale = fitScale;
-                }
                 fgImgObj.set({
                     ...commonStyle,
                     left: WORK_MARGIN + canvasW / 2,
